@@ -7,7 +7,7 @@ from PySide6.QtCore import QThread, Slot, Signal, QObject
 from PySide6.QtWidgets import QApplication, QMainWindow, QPlainTextEdit, QVBoxLayout, QPushButton, QWidget
 
 
-DIRECTORY = 'H:\Everquest\Logs'
+DIRECTORY = 'C:\\Program Files (x86)\\EverQuest\\Logs'
 
 
 class WorkerKilledException(Exception):
@@ -21,6 +21,33 @@ class WorkerSignals(QObject):
     result = Signal(object)
 
 
+class Watcher:
+
+    def __init__(self, response_function, directory):
+        self.observer = Observer()
+        self.response_function = response_function
+        self.directory = directory
+        
+    def run(self):
+        self.observer.schedule(self.response_function, self.directory, recursive=False)
+        self.observer.start()
+        try:
+            while self.observer.is_alive():
+                self.observer.join(1)
+
+        except:
+            self.observer.stop()
+            self.observer.join()
+            return 0
+        return 1
+
+    def stop(self):
+        if self.observer.is_alive():
+            self.observer.stop()
+            self.observer.join()
+            return 1
+        return 0
+
 class Thread(QThread):
     """
     Worker thread
@@ -32,7 +59,6 @@ class Thread(QThread):
         self.fn = fn
         self.args = args
         self.kwargs = kwargs
-        self.signals = WorkerSignals()
 
     @Slot()
     def run(self):
@@ -42,56 +68,67 @@ class Thread(QThread):
         # Retrieve args/kwargs here; and fire processing using them
         try:
             print("start of thread")
+            #watch directory
             result = self.fn(*self.args, **self.kwargs)
+            
             print("end of thread", result)
         except:
             traceback.print_exc()
             exctype, value = sys.exc_info()[:2]
-            self.signals.error.emit((exctype, value, traceback.format_exc()))
 
-        else:
-            self.signals.result.emit(result)
+class Watch_Directory_Thread(Thread):
 
-
-class Watcher:
-
-    def __init__(self, directory, handler):
-        self.observer = Observer()
+    def __init__(self, directory, signals=None, *args, **kwargs):
+        if not signals:
+            raise ValueError('signals must be passed')
+        super().__init__(self.watch_directory, signals=signals, *args, **kwargs)
         self.directory = directory
-        self.handler = handler
+    
+        
+    def watch_directory(self, signals=None):
+        self.watcher = Watcher(FileOnModifiedHandler(signals), self.directory)
+        print(f"start watch on {self.directory}")
+        res = self.watcher.run()
+        print("watcher stoped")
+        return res
+            
+            
+class FileOnModifiedHandler(FileSystemEventHandler):
 
-    def run(self):
-        self.observer.schedule(self.handler, self.directory, recursive=False)
-        self.observer.start()
-        try:
-            while self.observer.is_alive():
-                self.observer.join(1)
-
-        except:
-            self.observer.stop()
-            self.observer.join()
-
-
-class MyHandler(FileSystemEventHandler):
-
+    def __init__(self, signals):
+        self.signals = signals
+    
     def on_modified(self, event):
-        self.source_path = event.src_path
-        self.file_name = self.source_path.split('\\')[-1]
-        return self.file_name
+        self.file_name = event.src_path.split('\\')[-1]
+        print(f'file modified: {self.file_name}, ', end='')
+        if self.signals and self.file_name != 'dbg.txt':
+            self.signals.result.emit(self.file_name)
+            print(f'emitting file modified: {self.file_name}')
+        
+
+
+            
 
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-
-        self.directory_watch_thread = Thread(self.watch_directory)
+        
+        
+        
+        self.directory = DIRECTORY
+        self.signals = WorkerSignals()
+        self.signals.result.connect(self.set_text)
+        self.directory_watch_thread = Watch_Directory_Thread(self.directory, signals=self.signals)
         self.directory_watch_thread.start()
+
+
 
         self.setWindowTitle("Who Parser")
 
         widget = QWidget()
         layout = QVBoxLayout()
-
+        
         self.editor = QPlainTextEdit()
         self.clear_button = QPushButton("Clear Text")
         self.clear_button.clicked.connect(self.clear_text)
@@ -104,17 +141,9 @@ class MainWindow(QMainWindow):
 
         self.show()
 
-    def watch_directory(self):
-        print("in watch_directory")
-        self.directory = DIRECTORY
-        self.event_handler = MyHandler()
-        self.watcher = Watcher(self.directory, self.event_handler)
-        self.watcher.run()
-        print("after watcher.run")
 
     def set_text(self, current_file):
-        print("in set_text")
-        print(current_file)
+        print(f"in set_text: {current_file}")
         # textbox = self.editor.toPlainText()
         # if textbox == "":
         #     self.logfile = open(self.log_file, "r")
@@ -124,7 +153,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         # events to trigger when app is closed out
-        self.watcher.observer.stop()
+        self.directory_watch_thread.terminate()
 
     def clear_text(self):
         self.editor.setPlainText("")
