@@ -1,11 +1,11 @@
 import sys
 import time
 import traceback
-from PySide6.QtCore import QThread, Signal, QObject
+import configparser
+from PySide6.QtGui import QIcon
+from PySide6.QtCore import Signal, QObject, QSize
 from PySide6.QtWidgets import QApplication, QMainWindow, QPlainTextEdit, QVBoxLayout, QPushButton, QWidget
-from Threads import File_Stream_Thread, Watch_Directory_Thread
-
-DIRECTORY = 'C:\Program Files (x86)\EverQuest\Logs'
+from QThreads import File_Stream_Thread, Watch_Directory_Thread, Chunk_File_Stream_Thread
 
 
 class WorkerKilledException(Exception):
@@ -19,25 +19,45 @@ class WorkerSignals(QObject):
     result = Signal(object)
 
 
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-
-        self.directory = DIRECTORY
-        self.file = None
+        
+        config = configparser.ConfigParser()
+        config.read('config.ini')
+        if config['DEFAULT']['Directory']:
+            self.directory = config['DEFAULT']['Directory']
+        else:
+            #need to make dialog pop up for this and settings to change directory
+            #raise ValueError('config.ini not set')
+            self.directory = 'H:\Everquest\Logs'
+        
+        
         self.watch_directory_signals = WorkerSignals()
         self.watch_directory_signals.result.connect(self.file_compare)
-        self.watch_directory_thread = Watch_Directory_Thread(
-            self.directory, signals=self.watch_directory_signals)
+        self.watch_directory_thread = Watch_Directory_Thread(self.directory, 
+                                                             signals=self.watch_directory_signals)
         self.watch_directory_thread.start()
         
+        
+        self.file = None
+        #self.file_stream_type = File_Stream_Thread
+        self.file_stream_type = Chunk_File_Stream_Thread
+        self.file_stream_signals = WorkerSignals()
+        self.file_stream_signals.result.connect(self.set_text_list)
         self.file_stream_thread = None 
+        
+        
+        
         self.setWindowTitle("Who Parser")
+        self.setWindowIcon(QIcon('icon.jpg'))
 
         widget = QWidget()
         layout = QVBoxLayout()
 
         self.editor = QPlainTextEdit()
+        self.editor.setMinimumSize(QSize(800, 600))
         self.clear_button = QPushButton("Clear Text")
         self.clear_button.clicked.connect(self.clear_text)
 
@@ -46,22 +66,36 @@ class MainWindow(QMainWindow):
         widget.setLayout(layout)
 
         self.setCentralWidget(widget)
+        
+        #button_action = QAction()
+        
+        menu = self.menuBar()
+        setting_menu = menu.addMenu("Settings")
+        #setting_menu.addAction(button_action)
 
         self.show()
 
-    def file_compare(self, file):
-        if self.file != file:
-            self.file = file
-            self.start_file_stream(self.file)
 
-    def file_compare_new(self, file):
-        if self.file is None:
-            #first start up of start_file_stream
-            self.start_file_stream(self.file)
-        if self.file != file:
-            old_file = self.file
-            new_file = file
-            self.switch_file_stream(old_file, new_file)
+    def file_compare(self, file):
+        if self.file == file:
+            return
+        
+        prev_file = self.file
+        self.file = file 
+        char_name = self.file.split('_')[1]
+        self.setWindowTitle(f"Who Parser - {char_name}")
+        
+        if prev_file is not None:
+            self.file_stream_thread.terminate()
+            self.file_stream_thread.wait()
+            print(f'Prev thread running? {self.file_stream_thread.isRunning()}')
+            print('switching file')
+        # We were not watching a file, but one has been identified for us
+        print('starting file')
+        self.file_stream_thread = self.file_stream_type(self.directory,
+                                                 self.file, self.file_stream_signals)
+        self.file_stream_thread.start()
+    
 
     def set_text(self, line):
         new_line = line
@@ -69,17 +103,16 @@ class MainWindow(QMainWindow):
         updated_text = current_text + new_line
         self.editor.setPlainText(updated_text)
 
-    def start_file_stream(self, new_file):
-        self.file = new_file
-        self.file_stream_signals = WorkerSignals()
-        self.file_stream_signals.result.connect(self.set_text)
-        self.file_stream_thread = File_Stream_Thread(
-            self.file, self.file_stream_signals)
-        self.file_stream_thread.start()
+    def set_text_list(self, lines):
+        for line in lines:
+            new_line = line
+            current_text = self.editor.toPlainText()
+            updated_text = current_text + new_line
+            self.editor.setPlainText(updated_text)
 
     def closeEvent(self, event):
         # events to trigger when app is closed out
-        self.directory_watch_thread.terminate()
+        self.watch_directory_thread.terminate()
         self.file_stream_thread.terminate()
 
     def clear_text(self):

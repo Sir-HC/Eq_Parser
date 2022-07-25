@@ -1,7 +1,6 @@
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
-
-DIRECTORY = 'C:\Program Files (x86)\EverQuest\Logs'
+import time
 
 class Watcher:
 
