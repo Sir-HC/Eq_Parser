@@ -103,9 +103,7 @@ class MainWindow(QMainWindow):
         current_text = self.editor.toPlainText()
         updated_text = current_text + new_line
         self.editor.setPlainText(updated_text)
-        end_cursor = self.editor.textCursor()
-        end_cursor.movePosition(QTextCursor.End)
-        self.editor.setTextCursor(end_cursor)
+        self.set_cursor_to_end()
 
     def set_text_list(self, lines):
         for line in lines:
@@ -113,6 +111,9 @@ class MainWindow(QMainWindow):
             current_text = self.editor.toPlainText()
             updated_text = current_text + new_line
             self.editor.setPlainText(updated_text)
+        self.set_cursor_to_end()
+
+    def set_cursor_to_end(self):
         end_cursor = self.editor.textCursor()
         end_cursor.movePosition(QTextCursor.End)
         self.editor.setTextCursor(end_cursor)
