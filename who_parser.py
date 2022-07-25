@@ -2,7 +2,7 @@ import sys
 import time
 import traceback
 import configparser
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QTextCursor
 from PySide6.QtCore import Signal, QObject, QSize
 from PySide6.QtWidgets import QApplication, QMainWindow, QPlainTextEdit, QVBoxLayout, QPushButton, QWidget
 from QThreads import File_Stream_Thread, Watch_Directory_Thread, Chunk_File_Stream_Thread
@@ -78,6 +78,7 @@ class MainWindow(QMainWindow):
 
     def file_compare(self, file):
         if self.file == file:
+            print('same file')
             return
         
         prev_file = self.file
@@ -102,6 +103,9 @@ class MainWindow(QMainWindow):
         current_text = self.editor.toPlainText()
         updated_text = current_text + new_line
         self.editor.setPlainText(updated_text)
+        end_cursor = self.editor.textCursor()
+        end_cursor.movePosition(QTextCursor.End)
+        self.editor.setTextCursor(end_cursor)
 
     def set_text_list(self, lines):
         for line in lines:
@@ -109,15 +113,19 @@ class MainWindow(QMainWindow):
             current_text = self.editor.toPlainText()
             updated_text = current_text + new_line
             self.editor.setPlainText(updated_text)
+        end_cursor = self.editor.textCursor()
+        end_cursor.movePosition(QTextCursor.End)
+        self.editor.setTextCursor(end_cursor)
 
     def closeEvent(self, event):
         # events to trigger when app is closed out
-        self.watch_directory_thread.terminate()
-        self.file_stream_thread.terminate()
+        if self.watch_directory_thread and self.watch_directory_thread.isRunning():
+            self.watch_directory_thread.terminate()
+        if self.file_stream_thread and self.file_stream_thread.isRunning():
+            self.file_stream_thread.terminate()
 
     def clear_text(self):
         self.editor.setPlainText("")
-        self.start_file_stream()
 
 
 app = QApplication(sys.argv)

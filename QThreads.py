@@ -1,5 +1,4 @@
 #Threads.py
-import time
 from PySide6.QtCore import QThread, Slot
 from Watchers import FileOnModifiedHandler, Watcher
 
@@ -54,7 +53,7 @@ class File_Stream_Thread(Thread):
         while True:
             line = thefile.readline()
             if not line:
-                self.sleep(5)
+                self.sleep(2)
                 continue
             print(f'yielding line: {line}')
             yield line
@@ -84,7 +83,7 @@ class Chunk_File_Stream_Thread(Thread):
                     print(f'sending content lines: {len(content)}')
                     self.signals.result.emit(content)
                 self.location = f.tell()
-                self.sleep(5)
+                self.sleep(2)
             
     
 class Watch_Directory_Thread(Thread):

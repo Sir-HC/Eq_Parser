@@ -34,10 +34,14 @@ class FileOnModifiedHandler(FileSystemEventHandler):
 
     def __init__(self, signals):
         self.signals = signals
+        self.last_emit = 0
 
     def on_modified(self, event):
+        
         self.file_name = event.src_path.split('\\')[-1]
         # print(f'file modified: {self.file_name}')
         if self.signals and self.file_name != 'dbg.txt':
-            self.signals.result.emit(self.file_name)
+            if (time.time() - self.last_emit) > 5:
+                self.signals.result.emit(self.file_name)
+                self.last_emit = time.time()
             # print(f'emitting file modified: {self.file_name}')
